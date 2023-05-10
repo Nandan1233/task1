@@ -1,0 +1,115 @@
+//a--------------------------------------------------
+SELECT json_agg(row_to_json(movies))
+FROM (
+    SELECT tconst, primaryTitle, runtimeMinutes, genres
+    FROM movies
+    ORDER BY runtimeMinutes DESC
+    LIMIT 10
+) movies;
+
+
+//b--------------------------------------------------------
+CREATE TABLE movies (
+  tconst VARCHAR(10) PRIMARY KEY,
+  primaryTitle VARCHAR(255) NOT NULL,
+  runtimeMinutes INT NOT NULL,
+  genres VARCHAR(255) NOT NULL
+);
+
+INSERT INTO movies (tconst, primaryTitle, runtimeMinutes, genres)
+VALUES ('tt1234567', 'My Movie', 120, 'Action, Adventure');
+
+CREATE OR REPLACE FUNCTION add_movie(
+  IN tconst VARCHAR(10),
+  IN primaryTitle VARCHAR(255),
+  IN runtimeMinutes INT,
+  IN genres VARCHAR(255)
+) RETURNS TEXT AS $$
+BEGIN
+  INSERT INTO movies (tconst, primaryTitle, runtimeMinutes, genres)
+  VALUES (tconst, primaryTitle, runtimeMinutes, genres);
+  RETURN 'success';
+END;
+$$ LANGUAGE plpgsql;
+
+SELECT add_movie('tt2345678', 'Another Movie', 90, 'Comedy, Romance');
+
+
+//c----------------------------------------------------------------------------
+CREATE TABLE movies (
+  tconst VARCHAR(10) PRIMARY KEY,
+  primaryTitle VARCHAR(255) NOT NULL,
+  genres VARCHAR(255) NOT NULL
+);
+
+CREATE TABLE ratings (
+  tconst VARCHAR(10) REFERENCES movies(tconst),
+  averageRating NUMERIC(3,1) NOT NULL,
+  numVotes INT NOT NULL,
+  PRIMARY KEY (tconst, averageRating)
+);
+
+INSERT INTO movies (tconst, primaryTitle, genres)
+VALUES ('tt1234567', 'My Movie', 'Action, Adventure'),
+       ('tt2345678', 'Another Movie', 'Comedy, Romance');
+
+INSERT INTO ratings (tconst, averageRating, numVotes)
+VALUES ('tt1234567', 7.2, 100),
+       ('tt2345678', 6.8, 200);
+
+CREATE OR REPLACE FUNCTION get_top_rated_movies() RETURNS TABLE (
+  tconst VARCHAR(10),
+  primaryTitle VARCHAR(255),
+  genres VARCHAR(255),
+  averageRating NUMERIC(3,1)
+) AS $$
+BEGIN
+  RETURN QUERY
+    SELECT m.tconst, m.primaryTitle, m.genres, r.averageRating
+    FROM movies m
+    JOIN ratings r ON m.tconst = r.tconst
+    WHERE r.averageRating > 6.0
+    ORDER BY r.averageRating DESC;
+END;
+$$ LANGUAGE plpgsql;
+
+SELECT * FROM get_top_rated_movies();
+
+
+//d--------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION get_genre_movies_with_subtotals() RETURNS TABLE (
+  genre VARCHAR(255),
+  primaryTitle VARCHAR(255),
+  numVotes INT,
+  subtotal INT
+) AS $$
+BEGIN
+  RETURN QUERY
+    WITH genre_totals AS (
+      SELECT genres, SUM(numVotes) AS subtotal
+      FROM movies m
+      JOIN ratings r ON m.tconst = r.tconst
+      GROUP BY genres
+    )
+    SELECT m.genres AS genre, m.primaryTitle, r.numVotes,
+           gt.subtotal
+    FROM movies m
+    JOIN ratings r ON m.tconst = r.tconst
+    JOIN genre_totals gt ON m.genres = gt.genres
+    ORDER BY m.genres, m.primaryTitle;
+END;
+
+//e-----------------------------------------------------
+UPDATE movies
+SET runtimeMinutes = runtimeMinutes +
+  CASE WHEN genres LIKE '%Documentary%' THEN 15
+       WHEN genres LIKE '%Animation%' THEN 30
+       ELSE 45
+  END;
+
+
+
+
+
+
+
